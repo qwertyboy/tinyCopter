@@ -1,0 +1,51 @@
+Partlist
+
+Exported from xmega.sch at 5/3/2012 8:55:05 PM
+
+EAGLE Version 5.11.0 Copyright (c) 1988-2010 CadSoft
+
+Part     Value          Device                 Package            Library    Sheet
+
+AD_SEL                  SOLDERJUMPER_2WAY-OLDT SJ_2               SparkFun   1
+C1       10uF           FS_SERIES              FS_SERIES          adafruit   1
+C2       .1uF           C-USC0603              C0603              adafruit   1
+C3       100uF          FS_SERIES              FS_SERIES          adafruit   1
+C4       .1uF           C-USC0603              C0603              adafruit   1
+C5       .1uF           C-USC0603              C0603              adafruit   1
+C6       .1uF           C-USC0603              C0603              adafruit   1
+C7       .1uF           C-USC0603              C0603              adafruit   1
+C8       .1uF           C-USC0603              C0603              adafruit   1
+C9       .1uF           C-USC0603              C0603              adafruit   1
+C10      .1uF           C-USC0603              C0603              adafruit   1
+C11      .1uF           C-USC0603              C0603              adafruit   1
+C12      10nF           C-USC0603              C0603              adafruit   1
+C13      .1uF           C-USC0603              C0603              adafruit   1
+C14      2.2nF          C-USC0603              C0603              adafruit   1
+C15      .1uF           C-USC0603              C0603              adafruit   1
+C16      .1uF           C-USC0603              C0603              adafruit   1
+CN1      BATT           JST_2PIN-THM           JST-PH-2-THM       adafruit   1
+GPS                     GPS_FGPMMOPA6C         FGPMMOPA6C         adafruit   1
+GPS_FIX                 LEDCHIPLED_0805        CHIPLED_0805       adafruit   1
+IC1      XMEGA-A3-AU    XMEGA-A3-AU            TQFP64_14X14MM     SparkFun   1
+IC2      MPU-6050       MPU-6050               QFN-24             InvenSense 1
+JP1      ADC/DAC        M14LOCK                1X14_LOCK          SparkFun   1
+JP2      USART          M09LOCK                1X09_LOCK          SparkFun   1
+JP3      SPI            M09LOCK                1X09_LOCK          SparkFun   1
+JP4      GPIO           M11LOCK                1X11_LOCK          SparkFun   1
+JP5      PWR_TEST       M04LOCK                1X04_LOCK          SparkFun   1
+L1                      INDUCTOR-B82462G       B82462G            SparkFun   1
+LED2                    LEDCHIPLED_0805        CHIPLED_0805       adafruit   1
+PDI                     PINHD-2X3              2X03               SparkFun   1
+R1       2M8            R-US_R0603             R0603              adafruit   1
+R2       250K           R-US_R0603             R0603              adafruit   1
+R3       1M             R-US_R0603             R0603              adafruit   1
+R4       180K           R-US_R0603             R0603              adafruit   1
+R5       10K            R-US_R0603             R0603              adafruit   1
+R6       1K8            R-US_R0603             R0603              adafruit   1
+R7       1K8            R-US_R0603             R0603              adafruit   1
+R8       1K             R-US_R0603             R0603              adafruit   1
+R10      1K             R-US_R0603             R0603              adafruit   1
+RESET                   TAC_SWITCHSMD          TACTILE_SWITCH_SMD SparkFun   1
+RTC_BATT                CR1220SMT              CR1220-SMD         adafruit   1
+U1       TPS61200       TPS61200               QFN-10_PAD         SparkFun   1
+U2       ISL21070       ISL21070               SOT-23             intersil   1
