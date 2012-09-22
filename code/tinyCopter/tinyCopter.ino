@@ -47,10 +47,10 @@ int gyro_xout, gyro_yout, gyro_zout;     //Containers for raw gyroscope data
 
 ////////////////Target Angle Calculations////////////////
 
-volatile int roll_input;
-volatile int pitch_input;
-volatile int throttle_input;
-volatile int yaw_input;
+int roll_input;
+int pitch_input;
+int throttle_input;
+int yaw_input;
 
 #define ROLL_MIN 582
 #define ROLL_MID 756
@@ -60,7 +60,7 @@ volatile int yaw_input;
 #define PITCH_MAX 926
 #define THROTTLE_MIN 565
 #define THROTTLE_MID 738
-#define THROTTLE_THRESHOLD 0
+#define THROTTLE_THRESHOLD 600
 #define THROTTLE_MAX 923
 #define YAW_MIN 560
 #define YAW_MID 750
@@ -148,7 +148,7 @@ void setup(){
   //Now we are going to initialize our sensors
   Serial.println("Initializing sensors...");
   accel.initialize();
-  accel.setRange(0x1);  // +/-4g range
+  //accel.setRange(0x1);  // +/-4g range
   gyro.initialize();
   
   delay(100);          //Wait a little bit for things to settle
@@ -157,15 +157,15 @@ void setup(){
   Serial.println("Testing sensors...");
   
   bool accel_test_status = accel.testConnection();
-  byte accel_range = accel.getRange();
+  //byte accel_range = accel.getRange();
   delay(100);           //I think we need to wait for the transaction to take place before starting the next one
   bool gyro_test_status = gyro.testConnection();
   
   switch(accel_test_status){
     case true:
     Serial.println("Accelerometer all good!");
-    Serial.print("Range: ");
-    Serial.println(accel_range);
+    //Serial.print("Range: ");
+    //Serial.println(accel_range);
     break;
     
     case false:
@@ -199,11 +199,20 @@ void setup(){
   cli();
   setup_motorPWM_timer();
   setup_receiverCapture_timer();
-  setup_mainloop_timer();
+  //setup_mainloop_timer();
   sei();
 }
 
 void loop(){
+  getTargetAngles();
+  getGyroRates();
+  getAccelAngles();
+  
+  dataFilter();
+  updatePID();
+  
+  updateMotors();
+  Serial.println(GYRO_XANGLE);
 }
 
 
@@ -212,7 +221,7 @@ void loop(){
 
 //Function to set up interrupt for the main control loop
 void setup_mainloop_timer(){
-  TC_SetPeriod(&TCD1, 0x270F);                        //Set period register at 9999 to create 400Hz interrupt
+  TC_SetPeriod(&TCD1, 0x270F);                        //Set period register at 9999 to create 400Hz interrupt 0x270F
   TC1_ConfigClockSource(&TCD1, TC_CLKSEL_DIV8_gc);    //Use F_CPU/8 as timer clock
   TC1_SetOverflowIntLevel(&TCD1, TC_OVFINTLVL_HI_gc); //Enable high-level interrupt on overflow
   
@@ -298,19 +307,22 @@ volatile unsigned int counter = 0;
 volatile int state = 0;
 
 //400Hz Control loop
-ISR(TCD1_OVF_vect){
-  cli();
+//ISR(TCD1_OVF_vect){
+  //getTargetAngles();
+  //cli();
   
-  getGyroRates();
-  getAccelAngles();
+  //getGyroRates();
+  //getAccelAngles();
   
-  dataFilter();
+  //dataFilter();
   
-  updatePID();
-  updateMotors();
+  //updatePID();
   
-  sei();
-}
+  //sei();
+  //updateMotors();
+//  accel.getAcceleration(&accel_xout, &accel_yout, &accel_zout);
+//  Serial.println("hi");
+//}
 
 
 
@@ -325,6 +337,7 @@ ISR(TCD1_OVF_vect){
 
 //Read RC receiver and get target angles
 void getTargetAngles(){
+  
   yaw_input = TCE0.CCD;
   TARGET_ZRATE = ZRATE_RANGE * (yaw_input - YAW_MID)/(YAW_MAX - YAW_MIN);
   
@@ -332,14 +345,14 @@ void getTargetAngles(){
   if(throttle_input <= THROTTLE_THRESHOLD){
     throttle = 0.0;
   }else{
-    throttle = (throttle_input - THROTTLE_MIN)/(THROTTLE_MAX - THROTTLE_MIN);
+    throttle = (float)(throttle_input - THROTTLE_MIN)/(THROTTLE_MAX - THROTTLE_MIN);
   }
   
   roll_input = TCE0.CCA;
   TARGET_XANGLE = XANGLE_RANGE * (roll_input - ROLL_MID)/(ROLL_MAX - ROLL_MIN);
   
   pitch_input = TCE0.CCB;
-  TARGET_YANGLE = YANGLE_RANGE * (pitch_input - PITCH_MID)/(PITCH_MAX - PITCH_MIN);
+  TARGET_YANGLE = YANGLE_RANGE *(float)((float)(pitch_input - PITCH_MID)/(PITCH_MAX - PITCH_MIN));
 }
 
 //Read accelerometer and calculate angles
@@ -354,16 +367,16 @@ void getAccelAngles(){
 void getGyroRates(){
   gyro.getRotation(&gyro_xout, &gyro_yout, &gyro_zout);
   
-  GYRO_XRATE = gyro_xout / 66.5;
-  GYRO_YRATE = gyro_yout / 66.5;
-  GYRO_ZRATE = gyro_zout / 66.5;
+  GYRO_XRATE = (float)gyro_xout / 14.375;
+  GYRO_YRATE = (float)gyro_yout / 14.375;
+  GYRO_ZRATE = (float)gyro_zout / 14.375;
   
   GYRO_XANGLE += GYRO_XRATE * 0.0025;
   GYRO_YANGLE += GYRO_YRATE * 0.0025;
   GYRO_ZANGLE += GYRO_ZRATE * 0.0025;
 }
 
-//2nd order complementary filter
+//2nd order complementary filter`
 void dataFilter(){
   filter_xterm[0] = (ACCEL_XANGLE - COMPLEMENTARY_XANGLE) * timeConstant * timeConstant;
   filter_yterm[0] = (ACCEL_YANGLE - COMPLEMENTARY_YANGLE) * timeConstant * timeConstant;
