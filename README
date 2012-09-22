@@ -1,7 +1,7 @@
 tinyCopter - xmega based quadcopter project
 
 Specifications:
-	-xmega256a3u @ 32MHz
-	-MPU-6050 3-axis accelerometer/gyroscope
-	-MTK3339 GPS module
-	-nRF24LU1+ 2.4GHz transceiver
+	-xmega32a4u @ 32MHz
+	-ADXL345 Accelerometer and ITG-3200 Gyroscope
+	-USB for debugging and updating
+	-Reads standard R/C receiver
