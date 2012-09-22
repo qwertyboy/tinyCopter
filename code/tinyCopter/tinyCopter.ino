@@ -40,10 +40,96 @@ int gyro_xout, gyro_yout, gyro_zout;     //Containers for raw gyroscope data
 #define status_led1 13 //Pins for the status LEDs
 #define status_led2 12
 
-#define MOTOR1
-#define MOTOR2
-#define MOTOR3
-#define MOTOR4
+#define MOTOR1 0
+#define MOTOR2 0
+#define MOTOR3 0
+#define MOTOR4 0
+
+////////////////Target Angle Calculations////////////////
+
+volatile int roll_input;
+volatile int pitch_input;
+volatile int throttle_input;
+volatile int yaw_input;
+
+#define ROLL_MIN 582
+#define ROLL_MID 756
+#define ROLL_MAX 950
+#define PITCH_MIN 587
+#define PITCH_MID 747
+#define PITCH_MAX 926
+#define THROTTLE_MIN 565
+#define THROTTLE_MID 738
+#define THROTTLE_THRESHOLD 0
+#define THROTTLE_MAX 923
+#define YAW_MIN 560
+#define YAW_MID 750
+#define YAW_MAX 921
+
+#define XANGLE_RANGE 30
+#define YANGLE_RANGE 30
+#define ZRATE_RANGE 30
+
+float TARGET_ZRATE = 0.0;
+float throttle = 0.0;
+float TARGET_XANGLE = 0.0;
+float TARGET_YANGLE = 0.0;
+
+float ACCEL_XANGLE;
+float ACCEL_YANGLE;
+
+float GYRO_XRATE;
+float GYRO_YRATE;
+float GYRO_ZRATE;
+float GYRO_XANGLE;
+float GYRO_YANGLE;
+float GYRO_ZANGLE;
+
+float filter_xterm[3] = {0,0,0};
+float filter_yterm[3] = {0,0,0};
+#define timeConstant 0.1
+float COMPLEMENTARY_XANGLE;
+float COMPLEMENTARY_YANGLE;
+
+///////////////////////PID Control///////////////////////
+
+float KP;
+float KD;
+float KI;
+float ZKP;
+float ZKD;
+
+float XERROR;
+float YERROR;
+float ZERROR;
+
+float PREVIOUS_XERROR = 0;
+float PREVIOUS_YERROR = 0;
+float PREVIOUS_ZERROR = 0;
+
+float XDIFFERENTIAL = 0;
+float YDIFFERENTIAL = 0;
+float ZDIFFERENTIAL = 0;
+
+float XINTEGRAL;
+float YINTEGRAL;
+
+float PID_XOUTPUT;
+float PID_YOUTPUT;
+float PID_ZOUTPUT;
+
+//////////////////////Motor Control//////////////////////
+
+#define MOTOR_MIN 510
+#define MOTOR_MAX 950
+#define MOTOR_RANGE 440
+
+float motor1_speed;
+float motor2_speed;
+float motor3_speed;
+float motor4_speed;
+
+/////////////////////////////////////////////////////////
 
 void setup(){
   pinMode(status_led1, OUTPUT);  //Status LEDs are outputs
@@ -54,7 +140,7 @@ void setup(){
   //pinMode(MOTOR3, OUTPUT);
   //pinMode(MOTOR4, OUTPUT);
   
-  Wire.begin();       //We are using TWIE on an xmega A4
+  Wire.begin();       //We are using TWIC on an xmega A4
   
   Serial.begin(38400); //Start serial for debugging and such
   print_tinyCopter_ASCII();
@@ -62,6 +148,7 @@ void setup(){
   //Now we are going to initialize our sensors
   Serial.println("Initializing sensors...");
   accel.initialize();
+  accel.setRange(0x1);  // +/-4g range
   gyro.initialize();
   
   delay(100);          //Wait a little bit for things to settle
@@ -70,12 +157,15 @@ void setup(){
   Serial.println("Testing sensors...");
   
   bool accel_test_status = accel.testConnection();
+  byte accel_range = accel.getRange();
   delay(100);           //I think we need to wait for the transaction to take place before starting the next one
   bool gyro_test_status = gyro.testConnection();
   
   switch(accel_test_status){
     case true:
     Serial.println("Accelerometer all good!");
+    Serial.print("Range: ");
+    Serial.println(accel_range);
     break;
     
     case false:
@@ -201,38 +291,25 @@ void setup_receiverCapture_timer(){
 //Main loop interrupt
 volatile int pulse_widthA = 0;
 volatile int pulse_widthB = 0;
+volatile int pulse_widthC = 0;
+volatile int pulse_widthD = 0;
+
 volatile unsigned int counter = 0;
 volatile int state = 0;
+
+//400Hz Control loop
 ISR(TCD1_OVF_vect){
-  pulse_widthA = TCE0.CCA;
+  cli();
   
-  if(counter >= 2000){
-    TC_SetCompareA(&TCD0, pulse_widthA);
-    //Serial.println(TCD0.CCA);
-  }
+  getGyroRates();
+  getAccelAngles();
   
-  if(counter >= 2400){
-    TC_SetCompareB(&TCD0, 620);
-  }
+  dataFilter();
   
-  if(counter >= 2800){
-    TC_SetCompareC(&TCD0, 620);
-  }
+  updatePID();
+  updateMotors();
   
-  if(counter >= 3200){
-    TC_SetCompareD(&TCD0, 620);
-  }
-  
-  counter += 1;
-  //digitalWrite(18, state);
-  //state = !state;
-  
-  
-  //pulse_widthA = TCE0.CCA;
-  //pulse_widthB = TCE0.CCB;
-  Serial.println(pulse_widthA);
-  //Serial.println(pulse_widthB);
-  //TC_SetCompareA(&TCD0, pulse_widthA);
+  sei();
 }
 
 
@@ -245,3 +322,142 @@ ISR(TCD1_OVF_vect){
 //  pulse_width = TCE0.CCD;
 //  Serial.println(pulse_width);
 //}
+
+//Read RC receiver and get target angles
+void getTargetAngles(){
+  yaw_input = TCE0.CCD;
+  TARGET_ZRATE = ZRATE_RANGE * (yaw_input - YAW_MID)/(YAW_MAX - YAW_MIN);
+  
+  throttle_input = TCE0.CCC;
+  if(throttle_input <= THROTTLE_THRESHOLD){
+    throttle = 0.0;
+  }else{
+    throttle = (throttle_input - THROTTLE_MIN)/(THROTTLE_MAX - THROTTLE_MIN);
+  }
+  
+  roll_input = TCE0.CCA;
+  TARGET_XANGLE = XANGLE_RANGE * (roll_input - ROLL_MID)/(ROLL_MAX - ROLL_MIN);
+  
+  pitch_input = TCE0.CCB;
+  TARGET_YANGLE = YANGLE_RANGE * (pitch_input - PITCH_MID)/(PITCH_MAX - PITCH_MIN);
+}
+
+//Read accelerometer and calculate angles
+void getAccelAngles(){
+  accel.getAcceleration(&accel_xout, &accel_yout, &accel_zout);
+  
+  ACCEL_XANGLE = 57.295 * atan(accel_yout / sqrt(pow(accel_zout, 2) + pow(accel_xout, 2)));
+  ACCEL_YANGLE = 57.295 * atan(-accel_xout / sqrt(pow(accel_zout, 2) + pow(accel_yout, 2)));
+}
+
+//Read gyroscope and calculate angles
+void getGyroRates(){
+  gyro.getRotation(&gyro_xout, &gyro_yout, &gyro_zout);
+  
+  GYRO_XRATE = gyro_xout / 66.5;
+  GYRO_YRATE = gyro_yout / 66.5;
+  GYRO_ZRATE = gyro_zout / 66.5;
+  
+  GYRO_XANGLE += GYRO_XRATE * 0.0025;
+  GYRO_YANGLE += GYRO_YRATE * 0.0025;
+  GYRO_ZANGLE += GYRO_ZRATE * 0.0025;
+}
+
+//2nd order complementary filter
+void dataFilter(){
+  filter_xterm[0] = (ACCEL_XANGLE - COMPLEMENTARY_XANGLE) * timeConstant * timeConstant;
+  filter_yterm[0] = (ACCEL_YANGLE - COMPLEMENTARY_YANGLE) * timeConstant * timeConstant;
+  
+  filter_xterm[2] = (0.0025 * filter_xterm[0]) + filter_xterm[2];
+  filter_yterm[2] = (0.0025 * filter_yterm[0]) + filter_yterm[2];
+  
+  filter_xterm[1] = filter_xterm[2] + (ACCEL_XANGLE - COMPLEMENTARY_XANGLE) * 2 * timeConstant + GYRO_XRATE;
+  filter_yterm[1] = filter_yterm[2] + (ACCEL_YANGLE - COMPLEMENTARY_YANGLE) * 2 * timeConstant + GYRO_YRATE;
+  
+  COMPLEMENTARY_XANGLE = (0.0025 * filter_xterm[1]) + COMPLEMENTARY_XANGLE;
+  COMPLEMENTARY_YANGLE = (0.0025 * filter_yterm[1]) + COMPLEMENTARY_YANGLE;
+}
+
+//PID algorithm
+void updatePID(){
+  PREVIOUS_XERROR = XERROR;
+  PREVIOUS_YERROR = YERROR;
+  PREVIOUS_ZERROR = ZERROR;
+
+  XERROR = TARGET_XANGLE - COMPLEMENTARY_XANGLE;
+  YERROR = TARGET_YANGLE - COMPLEMENTARY_YANGLE;
+  ZERROR = TARGET_ZRATE - GYRO_ZRATE;
+
+  //XDIFFERENTIAL = (XERROR - PREVIOUS_XERROR)/dt;	
+  //YDIFFERENTIAL = (YERROR - PREVIOUS_YERROR)/dt;
+  //ZDIFFERENTIAL = (ZERROR - PREVIOUS_ZERROR)/dt;
+
+  XDIFFERENTIAL = -GYRO_XRATE;
+  YDIFFERENTIAL = -GYRO_YRATE;
+  ZDIFFERENTIAL = -GYRO_ZRATE;
+
+  XINTEGRAL += XERROR * 0.0025;
+  YINTEGRAL += YERROR * 0.0025;
+
+  if(XINTEGRAL > 0.5) {XINTEGRAL = 0.5;}
+  else if(XINTEGRAL < -0.5) {XINTEGRAL = -0.5;}
+  if(YINTEGRAL > 0.5) {YINTEGRAL = 0.5;}
+  else if(YINTEGRAL < -0.5) {YINTEGRAL = -0.5;}
+
+  PID_XOUTPUT = XERROR * KP + XDIFFERENTIAL * KD + XINTEGRAL * KI;
+  PID_YOUTPUT = YERROR * KP + YDIFFERENTIAL * KD + YINTEGRAL * KI;
+  PID_ZOUTPUT = ZERROR * ZKP; + ZDIFFERENTIAL * ZKD;
+  if(PID_ZOUTPUT > 1000){PID_ZOUTPUT = 1000;}
+  else if (PID_ZOUTPUT < -1000){PID_ZOUTPUT = -1000;}	
+}
+
+void updateMotors(){
+  if(throttle == 0.0){
+    TC_SetCompareA(&TCD0, 0x1FE);                          //Set the compare register at 510
+    TC_SetCompareB(&TCD0, 0x1FE);                          //Set the compare register at 510
+    TC_SetCompareC(&TCD0, 0x1FE);                          //Set the compare register at 510
+    TC_SetCompareD(&TCD0, 0x1FE);                          //Set the compare register at 510
+  }else{
+    motor1_speed = 0.7071 * PID_XOUTPUT + -0.7071 * PID_YOUTPUT + PID_ZOUTPUT + MOTOR_MIN + MOTOR_RANGE * throttle;
+    motor2_speed = 0.7071 * PID_XOUTPUT + 0.7071 * PID_YOUTPUT - PID_ZOUTPUT + MOTOR_MIN + MOTOR_RANGE * throttle;
+    motor3_speed = -0.7071 * PID_XOUTPUT + 0.7071 * PID_YOUTPUT + PID_ZOUTPUT + MOTOR_MIN + MOTOR_RANGE * throttle;
+    motor4_speed = -0.7071 * PID_XOUTPUT + -0.7071 * PID_YOUTPUT - PID_ZOUTPUT + MOTOR_MIN + MOTOR_RANGE * throttle;
+    
+    if(motor1_speed > MOTOR_MAX)  {motor1_speed = MOTOR_MAX;}
+    if(motor2_speed > MOTOR_MAX)  {motor2_speed = MOTOR_MAX;}
+    if(motor3_speed > MOTOR_MAX)  {motor3_speed = MOTOR_MAX;}
+    if(motor4_speed > MOTOR_MAX)  {motor4_speed = MOTOR_MAX;}
+    
+    if(motor1_speed < MOTOR_MIN)  {motor1_speed = MOTOR_MIN;}
+    if(motor2_speed < MOTOR_MIN)  {motor2_speed = MOTOR_MIN;}
+    if(motor3_speed < MOTOR_MIN)  {motor3_speed = MOTOR_MIN;}
+    if(motor4_speed < MOTOR_MIN)  {motor4_speed = MOTOR_MIN;}
+    
+    TC_SetCompareA(&TCD0, motor1_speed);
+    TC_SetCompareB(&TCD0, motor2_speed);
+    TC_SetCompareC(&TCD0, motor3_speed);
+    TC_SetCompareD(&TCD0, motor4_speed);
+  }
+}
+
+void calibrateESC(){
+  int x = 0;
+  
+  for(x = 0; x < 400; x++){
+    TC_SetCompareA(&TCD0, MOTOR_MAX);
+    TC_SetCompareB(&TCD0, MOTOR_MAX);
+    TC_SetCompareC(&TCD0, MOTOR_MAX);
+    TC_SetCompareD(&TCD0, MOTOR_MAX);
+    
+    delayMicroseconds(250);
+  }
+  
+  for(x = 0; x < 400; x++){
+    TC_SetCompareA(&TCD0, MOTOR_MIN);
+    TC_SetCompareB(&TCD0, MOTOR_MIN);
+    TC_SetCompareC(&TCD0, MOTOR_MIN);
+    TC_SetCompareD(&TCD0, MOTOR_MIN);
+    
+    delayMicroseconds(250);
+  }
+}
