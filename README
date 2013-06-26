@@ -1,4 +1,21 @@
-tinyCopter - xmega based quadcopter project
+tinyCopter v2 - arduino based quadcopter project
+
+Specifications:
+	-Atmega328 @ 16MHz
+	-ADXL345 Accelerometer and ITG-3200 Gyroscope
+	-USB for debugging and updating
+	-Reads standard R/C receiver
+	-Uses the AeroQuad firmware
+
+
+
+
+
+
+
+----OLD VERSION----
+
+tinyCopter rev C - xmega based quadcopter project
 
 Specifications:
 	-xmega32a4u @ 32MHz
